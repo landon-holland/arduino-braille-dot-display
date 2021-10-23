@@ -32,13 +32,16 @@ uint8_t current_pos = 0;
 // Current mode
 // 0 - Arduino standalone input mode
 // 1 - Arduino NVDA driver mode
-const uint8_t mode = 1;
+const uint8_t mode = 0;
 
 // 32 byte buffer
 byte buf[32];
 
-// bool array for if last state was low
-bool buttonWasLow[6];
+// array for time last released and button was previous low
+bool button_was_low[8];
+unsigned long last_button_release_time[8];
+unsigned long last_input;
+int button_released = -1;
 
 // Initialize braille array with correct binary representations of braille.
 void init_braille_array() {
@@ -171,8 +174,11 @@ void output_braille_nvda(uint8_t c) {
 }
 
 void backspace() {
-  current_pos--;
-  output_braille_nvda(0);
+  if (current_pos != 0) {
+    current_pos--;
+    output_braille_nvda(0);
+    current_pos--;
+  }
 }
 
 void new_line() {
@@ -193,10 +199,33 @@ void print_braille_str(const char *str) {
   }
 }
 
-void serialFlush(){
+void serial_flush(){
   while(Serial.available() > 0) {
     char t = Serial.read();
   }
+}
+
+byte keyboard_rearrange(byte keyboard_input) {
+  byte output = 0;
+  if (bitRead(keyboard_input, 1) == 1) {
+    bitSet(output, 2);
+  }
+  if (bitRead(keyboard_input, 2) == 1) {
+    bitSet(output, 1);
+  }
+  if (bitRead(keyboard_input, 3) == 1) {
+    bitSet(output, 0);
+  }
+  if (bitRead(keyboard_input, 4) == 1) {
+    bitSet(output, 3);
+  }
+  if (bitRead(keyboard_input, 5) == 1) {
+    bitSet(output, 4);
+  }
+  if (bitRead(keyboard_input, 6) == 1) {
+    bitSet(output, 5);
+  }
+  return output;
 }
 
 void setup() {
@@ -222,54 +251,45 @@ void loop() {
       for (int i = 0; i < len; i++) {
         output_braille_nvda(buf[i]);
       }
-      serialFlush();
+      serial_flush();
     }
   } else {
-    // First we check if any buttons are pressed
-    int button_state[8];
+    // First we update the appropriate arrays
     bool button_pressed = false;
+    byte button_input = 0;
     for (int i = 0; i < 8; i++) {
-      int check_button = digitalRead(button_pin[i]);
-      if (check_button == HIGH) {
-        button_pressed = true;
-        break;
+      if (digitalRead(button_pin[i]) == LOW) {
+        button_was_low[i] = true;
+      }
+      if (digitalRead(button_pin[i]) == HIGH && button_was_low[i]) {
+        button_was_low[i] = false;
+        last_button_release_time[i] = millis();
+        if (button_released == -1) {
+          button_released = i;
+        }
       }
     }
-    if (button_pressed) {
-      // Shortly delay, then read all buttons input.
-      delay(75);
+    if (button_released != -1 && millis() > last_button_release_time[button_released] + 100) {
       for (int i = 0; i < 8; i++) {
-        button_state[i] = digitalRead(button_pin[i]);
+        if (last_button_release_time[i] < last_button_release_time[button_released] + 100
+            && last_button_release_time[i] > last_button_release_time[button_released] - 100) {
+          bitSet(button_input, i);
+        }
       }
-      // convert array to prrrroper binary
-      if (button_state[0] == HIGH) {
-        backspace();
+      if (last_input == 0 || millis() - last_input > 250) {
+        last_input = millis();
+        if (bitRead(button_input, 0) == 1) {
+          backspace();
+        }
+        else if (bitRead(button_input, 7) == 1) {
+          new_line();
+        }
+        else {
+          output_braille_nvda(keyboard_rearrange(button_input));
+        }
       }
-      else if (button_state[7] == HIGH) {
-        new_line();
-      }
-      else {
-        byte print_char = 0;
-        if (button_state[6] == HIGH) {
-          bitSet(print_char, 0);
-        }
-        if (button_state[5] == HIGH) {
-          bitSet(print_char, 1);
-        }
-        if (button_state[4] == HIGH) {
-          bitSet(print_char, 2);
-        }
-        if (button_state[1] == HIGH) {
-          bitSet(print_char, 3);
-        }
-        if (button_state[2] == HIGH) {
-          bitSet(print_char, 4);
-        }
-        if (button_state[3] == HIGH) {
-          bitSet(print_char, 5);
-        }
-        output_braille_nvda(print_char);
-      }
+      button_released = -1;
+      button_input = 0;
     }
   }
 }
