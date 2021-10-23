@@ -7,28 +7,23 @@
 
 // Defining size of dot display and the pins for the dot display.
 #define MAX_DEVICES 4
-#define CS_PIN 3
-
-// Define pins for 8 button braille keyboard.
-#define BUTTON1_PIN 2
-#define BUTTON2_PIN 5
-#define BUTTON3_PIN 6
-#define BUTTON4_PIN 7
-#define BUTTON5_PIN 8
-#define BUTTON6_PIN 9
-#define BUTTON7_PIN 10
-#define BUTTON8_PIN 4
+#define CS_PIN 12
+#define DIN_PIN 11
+#define CLK_PIN 13
 
 // Object for dot display
-MD_MAX72XX mx = MD_MAX72XX(HARDWARE_TYPE, CS_PIN, MAX_DEVICES);
+MD_MAX72XX mx = MD_MAX72XX(HARDWARE_TYPE, DIN_PIN, CLK_PIN, CS_PIN, MAX_DEVICES);
+
+// Button array with pins
+const uint8_t button_pin[8] = {9, 8, 7, 6, 5, 4, 3, 2};
 
 // 2D Array for Braille Dot Display
 // 0 - Off
 // 1 - On
 // Binary representation of braille:
-// 2 3
-// 1 4
-// 0 5
+// 5 2
+// 4 1
+// 3 0
 uint8_t braille[127];
 
 // Current character position for Braille.
@@ -37,10 +32,13 @@ uint8_t current_pos = 0;
 // Current mode
 // 0 - Arduino standalone input mode
 // 1 - Arduino NVDA driver mode
-uint8_t mode = 0;
+const uint8_t mode = 1;
 
 // 32 byte buffer
 byte buf[32];
+
+// bool array for if last state was low
+bool buttonWasLow[6];
 
 // Initialize braille array with correct binary representations of braille.
 void init_braille_array() {
@@ -138,7 +136,11 @@ void output_braille(char c) {
   current_pos++;
 }
 
-// Output character to dot matrix using nvda style binary representation of braille.
+// Output character to dot matrix using NVDA style binary representation of braille.
+// 5 2
+// 4 1
+// 3 0
+// 6 7
 void output_braille_nvda(uint8_t c) {
   uint8_t current_x;
   uint8_t x_reset;
@@ -161,11 +163,25 @@ void output_braille_nvda(uint8_t c) {
       current_x--;
     }
   }
-  // account for 7 and 8 bit now
+  // account for 6 and 7 bit now
   current_y = (2 * current_pos) % 32;
   mx.setPoint(x_reset - 3, current_y, bitRead(c, 6));
   mx.setPoint(x_reset - 3, current_y + 1, bitRead(c, 7));
   current_pos++;
+}
+
+void backspace() {
+  current_pos--;
+  output_braille_nvda(0);
+}
+
+void new_line() {
+  if (current_pos < 16) {
+    current_pos = 16;
+  } else {
+    mx.clear();
+    current_pos = 0;
+  }
 }
 
 // Print given string in braille.
@@ -176,22 +192,17 @@ void print_braille_str(const char *str) {
     i++;
   }
 }
-
+ 
 void setup() {
   // Initialize Serial bus.
-  Serial.begin(19200);
+  Serial.begin(9600);
   Serial.setTimeout(1);
   // Initialize the braille array.
   init_braille_array();
   // Initialize pins for buttons.
-  pinMode(BUTTON1_PIN, INPUT);
-  pinMode(BUTTON2_PIN, INPUT);
-  pinMode(BUTTON3_PIN, INPUT);
-  pinMode(BUTTON4_PIN, INPUT);
-  pinMode(BUTTON5_PIN, INPUT);
-  pinMode(BUTTON6_PIN, INPUT);
-  pinMode(BUTTON7_PIN, INPUT);
-  pinMode(BUTTON8_PIN, INPUT);
+  for (int i = 0; i < 8; i++) {
+    pinMode(button_pin[i], INPUT);
+  }
   // Start dot display.
   mx.begin();
 }
@@ -206,19 +217,54 @@ void loop() {
       for (int i = 0; i < len; i++) {
         output_braille_nvda(buf[i]);
       }
+      
     }
   } else {
-    int buttonState1 = digitalRead(BUTTON1_PIN);
-    int buttonState2 = digitalRead(BUTTON2_PIN);
-    if (buttonState1 == HIGH) {
-      mx.setPoint(0, 0, true);
-    } else {
-      mx.setPoint(0, 0, false);
+    // First we check if any buttons are pressed
+    int button_state[8];
+    bool button_pressed = false;
+    for (int i = 0; i < 8; i++) {
+      int check_button = digitalRead(button_pin[i]);
+      if (check_button == HIGH) {
+        button_pressed = true;
+        break;
+      }
     }
-    if (buttonState2 == HIGH) {
-      mx.setPoint(1, 0, true);
-    } else {
-      mx.setPoint(1, 0, false);
+    if (button_pressed) {
+      // Shortly delay, then read all buttons input.
+      delay(75);
+      for (int i = 0; i < 8; i++) {
+        button_state[i] = digitalRead(button_pin[i]);
+      }
+      // convert array to prrrroper binary
+      if (button_state[0] == HIGH) {
+        backspace();
+      }
+      else if (button_state[7] == HIGH) {
+        new_line();
+      }
+      else {
+        byte print_char = 0;
+        if (button_state[6] == HIGH) {
+          bitSet(print_char, 0);
+        }
+        if (button_state[5] == HIGH) {
+          bitSet(print_char, 1);
+        }
+        if (button_state[4] == HIGH) {
+          bitSet(print_char, 2);
+        }
+        if (button_state[1] == HIGH) {
+          bitSet(print_char, 3);
+        }
+        if (button_state[2] == HIGH) {
+          bitSet(print_char, 4);
+        }
+        if (button_state[3] == HIGH) {
+          bitSet(print_char, 5);
+        }
+        output_braille_nvda(print_char);
+      }
     }
   }
 }
