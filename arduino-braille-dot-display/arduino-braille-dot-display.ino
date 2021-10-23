@@ -17,8 +17,10 @@ MD_MAX72XX mx = MD_MAX72XX(HARDWARE_TYPE, CS_PIN, MAX_DEVICES);
 // 1 - On
 uint8_t braille[127];
 
+// Current character position for Braille.
 uint8_t current_pos = 0;
 
+// Initialize braille array with correct binary representations of braille.
 void init_braille_array() {
   for (uint8_t i = 0; i < 32; i++) {
     braille[i] = 0b000000;
@@ -92,7 +94,7 @@ void output_braille(char c) {
   uint8_t braille_char = braille[c];
   uint8_t current_x;
   uint8_t x_reset;
-  uint8_t current_y = (2 * current_pos) % 16;
+  uint8_t current_y = (2 * current_pos) % 32;
   uint8_t x_count = 0;
   if (current_pos < 16) {
     x_reset = 7;
@@ -104,7 +106,7 @@ void output_braille(char c) {
     mx.setPoint(current_x, current_y, bitRead(braille_char, i - 1));
     x_count++;
     if (x_count == 3) {
-      current_x = 7;
+      current_x = x_reset;
       current_y++;
     } else {
       current_x--;
@@ -113,18 +115,21 @@ void output_braille(char c) {
   current_pos++;
 }
 
+void print_braille_str(const char *str) {
+  uint8_t i = 0;
+  while (str[i] != 0) {
+    output_braille(str[i]);
+    i++;
+  }
+}
+
 void setup() {
   // Initialize the braille array.
   Serial.begin(9600);
   init_braille_array();
   // Start dot display.
   mx.begin();
-  output_braille('H');
-  output_braille('I');
-  output_braille(' ');
-  output_braille('M');
-  output_braille('O');
-  output_braille('M');
+  print_braille_str("TEST");
 }
 
 void loop() {
