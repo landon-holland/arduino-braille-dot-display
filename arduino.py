@@ -1,8 +1,9 @@
 import braille
 import serial
+from threading import Timer
 from logHandler import log
 
-arduino = serial.Serial(port='COM3', baudrate=19200, timeout=.1)
+arduino = serial.Serial(port='COM3', baudrate=115200, timeout=.1)
 
 class BrailleDisplayDriver(braille.BrailleDisplayDriver):
     name = "arduino"
@@ -13,12 +14,14 @@ class BrailleDisplayDriver(braille.BrailleDisplayDriver):
         return arduino.isOpen()
 
     def __init__(self):
-        pass
+        self.timer = Timer(.01, self.getData)
+        self.timer.start()
 
     def terminate(self):
         super(BrailleDisplayDriver, self).terminate()
         try:
             arduino.close()
+            self.timer.cancel()
         except:
             pass
 
@@ -27,3 +30,7 @@ class BrailleDisplayDriver(braille.BrailleDisplayDriver):
 
     def display(self, cells):
         arduino.write(bytes(cells))
+
+    def getData():
+        log.write("Getting data!")
+        pass
