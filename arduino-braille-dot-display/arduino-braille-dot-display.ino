@@ -192,10 +192,16 @@ void print_braille_str(const char *str) {
     i++;
   }
 }
- 
+
+void serialFlush(){
+  while(Serial.available() > 0) {
+    char t = Serial.read();
+  }
+}
+
 void setup() {
   // Initialize Serial bus.
-  Serial.begin(9600);
+  Serial.begin(115200);
   Serial.setTimeout(1);
   // Initialize the braille array.
   init_braille_array();
@@ -206,7 +212,6 @@ void setup() {
   // Start dot display.
   mx.begin();
 }
-
 void loop() {
   // Check mode first
   if (mode == 1) {
@@ -217,7 +222,7 @@ void loop() {
       for (int i = 0; i < len; i++) {
         output_braille_nvda(buf[i]);
       }
-      
+      serialFlush();
     }
   } else {
     // First we check if any buttons are pressed
