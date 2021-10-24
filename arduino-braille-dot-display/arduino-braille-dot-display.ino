@@ -32,7 +32,7 @@ uint8_t current_pos = 0;
 // Current mode
 // 0 - Arduino standalone input mode
 // 1 - Arduino NVDA driver mode
-const uint8_t mode = 0;
+const uint8_t mode = 1;
 
 // 32 byte buffer
 byte buf[32];
@@ -347,7 +347,7 @@ void loop()
       }
       else
       {
-        Serial.write(button_input);
+        Serial.write(keyboard_rearrange(button_input));
       }
       button_released = -1;
       button_input = 0;
